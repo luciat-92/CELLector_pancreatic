@@ -83,6 +83,85 @@ convert_input_to_matrix <- function(df){
   return(mat)
 } 
 
+summary_CSS <- function(Signatures, ModelMat, n_patients){
+  
+  # Signature: output of CELLector.createAllSignatures
+  # ModelMat: output of CELLector.buildModelMatrix
+  # n_patients : number of patients for search space
+  
+  df <- data.frame(Subtype = names(Signatures$ES), 
+                   Signatures = Signatures$ES, 
+                   Signatures_complete = Signatures$S,
+                   N.patients = round(n_patients*Signatures$STS/100), 
+                   P.patients = Signatures$STS, 
+                   repr_CL = NA)
+  
+  id_mapped <- rownames(ModelMat)
+  id_lines <- colnames(ModelMat)
+  
+  for(id_row in 1:nrow(df)){
+    
+    if(!df$Subtype[id_row] %in% id_mapped){
+      df$repr_CL[id_row] <- 'lack of in vitro models'
+    }else{
+      id_row_model <- which(id_mapped == df$Subtype[id_row])
+      df$repr_CL[id_row] <- paste0(id_lines[ModelMat[id_row_model, ] == 1], collapse = ',')  
+    }
+  }
+  return(df)
+}
+
+coverage_CSS <- function(navTable){
+  
+  n_samples_cov <- navTable$AbsSupport[1]
+  right_child <- navTable$Right.Child.Index[1]
+  stop_cond <- right_child == 0
+  
+  while(!stop_cond){
+    n_samples_cov <- n_samples_cov + navTable$AbsSupport[right_child]
+    right_child <- navTable$Right.Child.Index[right_child]
+    stop_cond <- right_child == 0
+  }
+  
+  return(n_samples_cov)
+}
+
+coverage_CSS_mapped_lines <- function(navTable, subset_proj){
+  
+    n_samples_projected_signatures <- data.frame(Subtype = subset_proj$Subtype, 
+                                                 Signatures = subset_proj$Signatures, 
+                                                 n_samples = NA)
+    
+    for(id_row in 1:nrow(subset_proj)){
+      
+      n <- subset_proj$N.patients[id_row]
+      minus_n <- 0
+      id_info <- which(subset_proj$Subtype[id_row] == navTable$Idx)
+      
+      # check if there is a left child
+      if(navTable$Left.Child.Index[id_info]!=0){
+        
+        new_id <- navTable$Left.Child.Index[id_info]
+        minus_n <- navTable$AbsSupport[navTable$Idx == new_id]
+        
+        # add all the right nodes
+        exists_right <- navTable$Right.Child.Index[navTable$Idx == new_id] != 0
+        
+        while(exists_right){
+          new_id <- navTable$Right.Child.Index[navTable$Idx == new_id]
+          minus_n <- minus_n + navTable$AbsSupport[navTable$Idx == new_id]
+          exists_right <- navTable$Right.Child.Index[navTable$Idx == new_id] != 0
+        }
+      }
+      
+      n_samples_projected_signatures$n_samples[id_row] <- n-minus_n
+    }
+    
+    
+  return(n_samples_projected_signatures)
+  
+}
+
 search_space_and_project <- function(mat, mat_to_project, minGlobSupp = 0.02){
   
   # unicize the sample identifiers for the tumour data
@@ -104,9 +183,9 @@ search_space_and_project <- function(mat, mat_to_project, minGlobSupp = 0.02){
   CELLector.visualiseSearchingSpace(searchSpace = CSS, CLdata = mat_to_project)
   
   ### selecting all lines
-  selectedCellLines <- CELLector.makeSelection(modelMat = ModelMat,
-                                               n=ncol(ModelMat),
-                                               searchSpace = CSS$navTable)
+  #selectedCellLines <- CELLector.makeSelection(modelMat = ModelMat,
+  #                                             n=ncol(ModelMat), 
+  #                                             searchSpace = CSS$navTable)
   #knitr::kable(selectedCellLines,align = 'l')
   
   ### Scoring cell lines based on the searching space assembled in the previous examples
@@ -114,8 +193,22 @@ search_space_and_project <- function(mat, mat_to_project, minGlobSupp = 0.02){
   #knitr::kable(CSscores,align = 'l')
   
   CSscores_tab <- CSscores[!duplicated(CSscores$CellLines),]
+  # get summary space:
+  summary_res <- summary_CSS(Signatures = Signatures, 
+                             ModelMat = ModelMat, 
+                             n_patients = ncol(mat))
   
-  search_output <- list(signatures = Signatures_tab, projection = CSscores_tab, plot = space_plot)
+  # get percentage coverage
+  subset_proj <- summary_res[summary_res$Signatures_complete %in% unique(CSscores_tab$Signature),]
+  n_samples_mapped <- coverage_CSS(navTable = CSS$navTable)
+  n_samples_mapped_with_lines <- coverage_CSS_mapped_lines(navTable = CSS$navTable, 
+                                                           subset_proj = subset_proj)
+  
+  search_output <- list(signatures = Signatures_tab, projection = CSscores_tab, 
+                        summary = summary_res, 
+                        n_samples_mapped = n_samples_mapped, 
+                        n_samples_mapped_with_lines = n_samples_mapped_with_lines, 
+                        plot = space_plot)
   
   return(search_output)
   
@@ -178,10 +271,15 @@ inhouse_mat <- t(inhouse_mat)
 inhouse_mat <- cbind(id = 1:nrow(inhouse_mat), CellLine=rownames(inhouse_mat), 
                      as.data.frame(inhouse_mat))
 inhouse_mat$CellLine <- factor(inhouse_mat$CellLine)
+res = inhouse_mat
+save(res, file = 'data/inhouse_snv_matrix_drivers.RData')
 
 ### combine all model tables ###
 common_mut <- intersect(intersect(rownames(TGCA_mat), rownames(icgc_mat)), rownames(bailey_mat))
 tot_mat <- cbind(TGCA_mat[common_mut,], icgc_mat[common_mut,], bailey_mat[common_mut,])
+# save .RData format
+res <- tot_mat
+save(res, file = 'data/combined_snv_matrix_drivers.RData')
 
 # count mutations combined model table
 model_mat <- list(tgca = TGCA_mat, icgc = icgc_mat, bailey = bailey_mat)
@@ -261,6 +359,59 @@ for(id in 1:length(model_mat)){
   dev.off()
   
 }
+
+# save summary table for combined 
+summary_tab <- search_output[[4]]$summary
+write.table(summary_tab, file = 'output/combined_summary_CSS.tsv', quote = F, 
+            sep = '\t', row.names = F, col.names = T)
+
+# pie chart mapping
+n_samples <- ncol(tot_mat)
+missing <- n_samples - search_output[[4]]$n_samples_mapped
+missing_in_lines <- search_output[[4]]$n_samples_mapped - sum(search_output[[4]]$n_samples_mapped_with_lines$n_samples)
+
+df_coverage <- data.frame(n = c(search_output[[4]]$n_samples_mapped_with_lines$n_samples, 
+                                missing_in_lines, missing), 
+                          type = c(search_output[[4]]$n_samples_mapped_with_lines$Signatures, 
+                                   'without organoid model', 
+                                   'not in CELLector search space'))
+df_coverage <- df_coverage %>% 
+               mutate(prop = n/n_samples*100, 
+                      prop_lab =  paste0(round(n/n_samples*100, digits = 1), '%'))
+df_coverage$type <- factor(df_coverage$type, levels = rev(df_coverage$type))
+mycols <- c("grey90", "grey50", "lightsalmon4", "lightsalmon3", "lightsalmon1")
+
+pie_chart <- ggplot(df_coverage, aes(x = "", y = prop, fill = type)) +
+    geom_bar(width = 1, stat = "identity", color = "black") +
+    coord_polar("y", start = 0)+
+    geom_label_repel(aes(label = prop_lab), position = position_stack(vjust=0.5), min.segment.length = 0) +
+    scale_fill_manual(values = mycols) +
+    theme_void()
+
+ggsave(pie_chart, filename = 'output/plot/combined_piechart_with_signatures.png',
+       width = 4, height = 4, dpi = 200)
+
+###
+df_coverage <- data.frame(n = c(search_output[[4]]$n_samples_mapped, missing),
+                          type = c( 'in CELLector search space', 
+                                    'not in CELLector search space'))
+df_coverage <- df_coverage %>% 
+  mutate(prop = n/n_samples*100, 
+         prop_lab =  paste0(round(n/n_samples*100, digits = 1), '%'))
+df_coverage$type <- factor(df_coverage$type, levels = rev(df_coverage$type))
+mycols <- c("grey90", "lightblue")
+
+pie_chart <- ggplot(df_coverage, aes(x = "", y = prop, fill = type)) +
+  geom_bar(width = 1, stat = "identity", color = "black") +
+  coord_polar("y", start = 0)+
+  geom_label_repel(aes(label = prop_lab), position = position_stack(vjust=0.5), min.segment.length = 0) +
+  scale_fill_manual(values = mycols) +
+  theme_void()
+
+ggsave(pie_chart, filename = 'output/plot/combined_piechart.png',
+       width = 4, height = 4, dpi = 200)
+
+
 
 ################################################
 ### investigate survival based on signatures ###
