@@ -468,7 +468,7 @@ PA_cl_BEM <- CELLline_buildBEM_annotationProvided(
   Tissue='Pancreas',
   Cancer_Type = 'Pancreatic Carcinoma',
   GenesToConsider = common_mut,
-  excludeOrganoids = F)
+  excludeOrganoids = T)
 PA_cl_BEM_mat <- t(convert_input_to_matrix(PA_cl_BEM[, -1]))
 # save
 save(PA_cl_BEM, file = 'data/cmap_PA_cl_snv_matrix_drivers.RData')
@@ -558,9 +558,8 @@ save(CSS, file = 'output/CSS_output.RData')
 Signatures <- CELLector.createAllSignatures(CSS$navTable)
 Signatures_tab <- data.frame(S = Signatures$S, Perc = Signatures$STS)
 n_samples_mapped <- coverage_CSS(navTable = CSS$navTable)
-# pie chart plot
 
-### plot suburst
+### plot sunburst
 CELLector.visualiseSearchingSpace_sunBurst(CSS)
 
 ############################
@@ -568,6 +567,8 @@ CELLector.visualiseSearchingSpace_sunBurst(CSS)
 ############################
 
 project_CSS_inhouse <- project_CSS(CSS, inhouse_mat, n_samples_CSS = ncol(tot_mat))
+write.table(file = 'output/summary_CSS_projected_inhouse.tsv', project_CSS_inhouse$summary, sep = '\t', 
+            quote = F, col.names = T, row.names = F)
 # plot tree
 CELLector.visualiseSearchingSpace(searchSpace = CSS, CLdata = inhouse_mat)
 # heatmap line scores
@@ -605,6 +606,9 @@ pie_chart_mapped(n_samples = ncol(tot_mat), n_samples_mapped = n_samples_mapped,
 ##########################
 
 project_CSS_cmap_cl <- project_CSS(CSS, PA_cl_BEM, n_samples_CSS = ncol(tot_mat))
+# save summary
+write.table(file = 'output/summary_CSS_projected_cmap_cl.tsv', project_CSS_cmap_cl$summary, sep = '\t', 
+            quote = F, col.names = T, row.names = F)
 # plot tree
 CELLector.visualiseSearchingSpace(searchSpace = CSS, CLdata = PA_cl_BEM)
 # heatmap line scores
