@@ -43,6 +43,7 @@ create_BEM_from_CSS_p <- function(CSS_navTable, GF_input){
 }
 
 # cox model
+### MODIFY! partition can plot all the group curves together ####
 cox_regression <- function(BEM_df, df_clinical, time_var, status_var){
   
   res_cox_out <- list()
@@ -94,7 +95,6 @@ plot_cox_summary <- function(cox_reg, title_pl = NULL, save_file = NULL){
   
 }
 
-### MODIFY! partition can plot all the group curves together ####
 plot_km_curve <- function(BEM_df, df_clinical, time_var, status_var, sign_var, 
                         cox_reg_df = NULL, save_file = NULL){
   
