@@ -42,6 +42,7 @@ create_class_from_CSS_p <- function(CSS_navTable, GF_input){
   }
   class_df$group_id <- factor(class_df$group_id, levels = CSS_navTable$Signature)
   return(class_df)
+  
 }
 
 # cox model
